@@ -8,7 +8,6 @@ import sys
 import astropy.constants.codata2018 as constants
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 from astropy.io import fits
 from numpy.random import multivariate_normal
 
@@ -40,16 +39,16 @@ multivariate_dictionary = {}
 for i, v in enumerate(par_n):
     multivariate_dictionary[v] = mvd_[:, i]
 
-_temp = functions.IsotropicEnergy(model_name, multivariate_dictionary, sigma, s, duration, redshift,,
+_temp = functions.IsotropicEnergy(model_name, multivariate_dictionary, sigma, s, start, end, redshift)
 eiso_val, _ = _temp.get_value_error_pairs()
 
 if 'sbpl' in model_name.lower():
     a_sbpl = multivariate_dictionary['i1_sbpl']
-    bE = multivariate_dictionary['bE']
-    bS = multivariate_dictionary['bS']
-    b_sbpl = multivariate_dictionary['i2_sbpl']
+bE = multivariate_dictionary['bE']
+bS = multivariate_dictionary['bS']
+b_sbpl = multivariate_dictionary['i2_sbpl']
 
-    multivariate_dictionary['ep_sbpl'] = functions.break_energy_to_peak_energy__sbpl(a_sbpl, bE, bS, b_sbpl)
+multivariate_dictionary['ep_sbpl'] = functions.break_energy_to_peak_energy__sbpl(a_sbpl, bE, bS, b_sbpl)
 
 # add e_i_peak and e_iso to multivariate_dictionary
 multivariate_dictionary['e_i_peak'] = multivariate_dictionary[f'ep_{model_name.lower()}'] * (1 + redshift)

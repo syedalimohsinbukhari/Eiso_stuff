@@ -91,7 +91,7 @@ def break_energy_to_peak_energy__sbpl(i1_sbpl, break_energy, break_scale, i2_sbp
 
 
 class IsotropicEnergy:
-    def __init__(self, model_name, multivariate_dictionary, sigma, n_iterations, e_low, e_high, t_start, t_stop, redshift, h0=67.4, omega_m=0.315):
+    def __init__(self, model_name, multivariate_dictionary, sigma, n_iterations, t_start, t_stop, redshift=0, e_low=8, e_high=int(1e7), h0=67.4, omega_m=0.315):
         self.model_name = model_name.lower()
         self.multivariate_dictionary = copy.deepcopy(multivariate_dictionary)
         self.sigma = sigma
@@ -125,7 +125,7 @@ class IsotropicEnergy:
         _constant = (4 * np.pi * mvd_with_dl[-1]**2) * (1 + self.redshift)**-1 * 1.60217657e-9
         return _fluence * self.__duration() * _constant
 
-    def isotropic_energy__mp(self, luminosity_distance, n_proc=2):
+    def isotropic_energy__mp(self, luminosity_distance, n_proc):
         mvd = self.multivariate_dictionary
 
         mvd['_dl'] = np.repeat(luminosity_distance, self.n_iterations)
@@ -136,11 +136,11 @@ class IsotropicEnergy:
 
         return [Pool(n_proc).map(self.isotropic_energy, chunk) for chunk in _chunks]
 
-    def get_value_error_pairs(self):
+    def get_value_error_pairs(self, n_proc=2):
 
         luminosity_distance = self.__luminosity_integral()
 
-        e_isotropic = self.isotropic_energy__mp(luminosity_distance, n_proc=10)
+        e_isotropic = self.isotropic_energy__mp(luminosity_distance, n_proc=n_proc)
 
         _values = np.array(e_isotropic)
 

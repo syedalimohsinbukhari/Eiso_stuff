@@ -43,13 +43,11 @@ _temp = fncs.IsotropicEnergy(model_name=model_name,
                              multivariate_dictionary=multivariate_dictionary,
                              sigma=sigma,
                              n_iterations=s,
-                             e_low=8,
-                             e_high=int(1e7),
                              t_start=start,
                              t_stop=end,
                              redshift=redshift)
 
-eiso_val, _ = _temp.get_value_error_pairs()
+eiso_val, _ = _temp.get_value_error_pairs(n_proc=10)
 
 if 'sbpl' in model_name.lower():
     a_sbpl = multivariate_dictionary['i1_sbpl']

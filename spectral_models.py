@@ -4,11 +4,13 @@ Created on Mon Feb 21 15:24:34 2022
 
 import numpy as np
 import scipy.integrate as si
+from astropy.cosmology import FlatLambdaCDM
 
 
 class SpectralModels:
 
-    def __init__(self, energy, pars, t_start, t_stop, model: str = 'pl', model_type: str = 'counts', flux_energy=None, isotropic_energy=None, redshift=None):
+    def __init__(self, energy, pars, t_start, t_stop, model: str = 'pl', model_type: str = 'counts', flux_energy=None, isotropic_energy=None, redshift=None, h0=67.4,
+                 omega_m=0.315):
         self.energy = energy
         self.pars = pars
         self.t_start = t_start
@@ -18,9 +20,20 @@ class SpectralModels:
         self.f_ene = [10, int(1e7)] if flux_energy is None else flux_energy
         self.f_iso = [1, int(1e4)] if isotropic_energy is None else isotropic_energy
         self.z = 0 if redshift is None else redshift
+        self.h0 = h0
+        self.omega_m = omega_m
         self.keVtoErg = 1.6021766208e-09
 
         self.__raise_error()
+
+    def __luminosity_distance(self, z_int):
+        return FlatLambdaCDM(H0=self.h0, Om0=self.omega_m).luminosity_distance(z_int).cgs.value
+
+    def __luminosity_integral(self):
+        return si.quad(self.__luminosity_distance, 0, self.z)[0]
+
+    def __duration(self):
+        return self.t_stop - self.t_start
 
     def __raise_error(self):
         types_ = ['counts', 'energy', 'integrate', 'bolometric']
@@ -84,8 +97,8 @@ class SpectralModels:
         pars = pars if joint_pars is None else joint_pars
 
         def f_cpl(_e=energy, out_ene=True):
-            [amp, Ep, i1, e_piv] = pars
-            out = amp * np.exp(-1 * _e * (2 + i1) * Ep**-1) * (_e * e_piv**-1)**i1
+            [amp, e_peak, i1, e_piv] = pars
+            out = amp * np.exp(-1 * _e * (2 + i1) * e_peak**-1) * (_e * e_piv**-1)**i1
 
             return _e * out if out_ene else out
 
@@ -144,11 +157,11 @@ class SpectralModels:
         pars = pars if joint_pars is None else joint_pars
 
         def f_band(_e=energy, out_ene=True):
-            [amp, Ep, i1, i2] = pars
-            cond = (i1 - i2) * (2 + i1)**-1 * Ep
+            [amp, e_peak, i1, i2] = pars
+            cond = (i1 - i2) * (2 + i1)**-1 * e_peak
 
-            out = [amp * (_e * 0.01)**i2 * np.exp(i2 - i1) * ((i1 - i2) * Ep * 0.01 * (i1 + 2)**-1)**(i1 - i2) if _e > cond else
-                   amp * (_e * 0.01)**i1 * np.exp(-(2 + i1) * _e * Ep**-1)][0]
+            out = [amp * (_e * 0.01)**i2 * np.exp(i2 - i1) * ((i1 - i2) * e_peak * 0.01 * (i1 + 2)**-1)**(i1 - i2) if _e > cond else
+                   amp * (_e * 0.01)**i1 * np.exp(-(2 + i1) * _e * e_peak**-1)][0]
 
             return _e * out if out_ene else out
 
@@ -236,3 +249,9 @@ class SpectralModels:
                 self.smoothly_broken_powerlaw() if model == 'sbpl' else
                 self.sbpl_pl() if model == 'sbpl_pl' else
                 self.sbpl_bb() if model == 'sbpl_bb' else self.sbpl_pl_bb()][0]
+
+    def isotropic_energy(self):
+        _fluence = self.get_values()
+        _constant = (4 * np.pi * self.__luminosity_integral()**2) * (1 + self.z)**-1
+
+        return _fluence * self.__duration() * _constant
