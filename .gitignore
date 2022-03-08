@@ -132,8 +132,8 @@ dmypy.json
 .idea/
 
 # External folders
-csv_files/
-ep1/
-ep2/
-ep3/
-TI/
+csv_files/*
+ep1/*
+ep2/*
+ep3/*
+TI/*
