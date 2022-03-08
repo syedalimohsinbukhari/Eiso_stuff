@@ -6,10 +6,9 @@ from multiprocessing import Pool
 
 import matplotlib.pyplot as plt
 import numpy as np
-import scipy.integrate as s_int
 from astropy.cosmology import FlatLambdaCDM
 
-from spectral_models__counts import band, cpl, sbpl
+from spectral_models import SpectralModels
 
 
 def get_parameter_details(model_name):
@@ -92,14 +91,18 @@ def break_energy_to_peak_energy__sbpl(i1_sbpl, break_energy, break_scale, i2_sbp
 
 
 class IsotropicEnergy:
-
-    def __init__(self, model_name, multivariate_dictionary, sigma, n_iterations, duration, redshift):
+    def __init__(self, model_name, multivariate_dictionary, sigma, n_iterations, e_low, e_high, t_start, t_stop, redshift, h0=67.4, omega_m=0.315):
         self.model_name = model_name.lower()
         self.multivariate_dictionary = copy.deepcopy(multivariate_dictionary)
         self.sigma = sigma
         self.n_iterations = n_iterations
-        self.duration = duration
+        self.e_low = e_low
+        self.e_high = e_high
+        self.t_start = t_start
+        self.t_stop = t_stop
         self.redshift = redshift
+        self.h0 = h0
+        self.omegaM = omega_m
 
     @staticmethod
     def __chunks(lst, n):
@@ -108,46 +111,36 @@ class IsotropicEnergy:
         for iterator in range(0, len(lst), n):
             yield lst[iterator:iterator + n]
 
-    def __luminosity_integral(self, h0, omega_l):
-        return FlatLambdaCDM(H0=h0, Om0=omega_l).luminosity_distance(self.redshift).si.value
+    def __duration(self):
+        return self.t_stop - self.t_start
 
-    def isotropic_energy(self, energy, pars):
-        if self.model_name == 'band':
-            _fluence = band(energy, pars[0:4])
-        elif self.model_name == 'sbpl':
-            _fluence = sbpl(energy, pars[0:6])
-        elif self.model_name == 'cpl':
-            _fluence = cpl(energy, pars[0:4])
-        else:
-            _fluence = 0
+    def __luminosity_integral(self):
+        return FlatLambdaCDM(H0=self.h0, Om0=self.omegaM).luminosity_distance(self.redshift).cgs.value
 
-        luminosity_distance = pars[-1]
+    def isotropic_energy(self, mvd_with_dl):
+        e_range = np.logspace(np.log10(self.e_low), np.log10(self.e_high), int(self.n_iterations))
 
-        _constant = (4 * np.pi * luminosity_distance**2) * (1 + self.redshift)**-1 * 1.60217657e-9
-        return _fluence * self.duration * _constant
+        _fluence = SpectralModels(e_range, mvd_with_dl[:-1], self.t_start, self.t_stop, self.model_name, 'bolometric').get_values()
 
-    def isotropic_energy__integral(self, pars):
-        _e0, _e1 = pars[-3], pars[-2]
-        return s_int.quad(self.isotropic_energy, _e0 / (1 + self.redshift), _e1 / (1 + self.redshift), args=pars)
+        _constant = (4 * np.pi * mvd_with_dl[-1]**2) * (1 + self.redshift)**-1 * 1.60217657e-9
+        return _fluence * self.__duration() * _constant
 
-    def isotropic_energy__multiprocessing(self, luminosity_distance, n_proc=2):
+    def isotropic_energy__mp(self, luminosity_distance, n_proc=2):
         mvd = self.multivariate_dictionary
 
-        mvd['_e0'] = np.repeat(1, self.n_iterations)
-        mvd['_e1'] = np.repeat(int(1e4), self.n_iterations)
         mvd['_dl'] = np.repeat(luminosity_distance, self.n_iterations)
 
         mvd = np.array(list(mvd.values())).T
 
         _chunks = tuple(self.__chunks(mvd, self.n_iterations // n_proc))
 
-        return [Pool(n_proc).map(self.isotropic_energy__integral, chunk) for chunk in _chunks]
+        return [Pool(n_proc).map(self.isotropic_energy, chunk) for chunk in _chunks]
 
     def get_value_error_pairs(self):
 
-        luminosity_distance = self.__luminosity_integral(67.4, 0.315)
+        luminosity_distance = self.__luminosity_integral()
 
-        e_isotropic = self.isotropic_energy__multiprocessing(luminosity_distance, n_proc=10)
+        e_isotropic = self.isotropic_energy__mp(luminosity_distance, n_proc=10)
 
         _values = np.array(e_isotropic)
 
