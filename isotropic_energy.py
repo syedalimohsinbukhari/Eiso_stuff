@@ -39,14 +39,7 @@ multivariate_dictionary = {}
 for i, v in enumerate(par_n):
     multivariate_dictionary[v] = mvd_[:, i]
 
-_temp = fncs.IsotropicEnergy(model_name=model_name,
-                             multivariate_dictionary=multivariate_dictionary,
-                             sigma=sigma,
-                             n_iterations=s,
-                             t_start=start,
-                             t_stop=end,
-                             redshift=redshift)
-
+_temp = fncs.IsotropicEnergy(model_name, multivariate_dictionary, sigma, s, start, end, redshift)
 eiso_val, _ = _temp.get_value_error_pairs(n_proc=10)
 
 if 'sbpl' in model_name.lower():

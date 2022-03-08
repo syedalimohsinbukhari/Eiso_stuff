@@ -6,6 +6,7 @@ from multiprocessing import Pool
 
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.integrate as si
 from astropy.cosmology import FlatLambdaCDM
 
 from spectral_models import SpectralModels
@@ -114,15 +115,18 @@ class IsotropicEnergy:
     def __duration(self):
         return self.t_stop - self.t_start
 
+    def __luminosity_distance(self, int_z=0):
+        return FlatLambdaCDM(H0=self.h0, Om0=self.omegaM).luminosity_distance(int_z).cgs.value
+
     def __luminosity_integral(self):
-        return FlatLambdaCDM(H0=self.h0, Om0=self.omegaM).luminosity_distance(self.redshift).cgs.value
+        return si.quad(self.__luminosity_distance, 0, self.redshift)[0]
 
     def isotropic_energy(self, mvd_with_dl):
         e_range = np.logspace(np.log10(self.e_low), np.log10(self.e_high), int(self.n_iterations))
 
         _fluence = SpectralModels(e_range, mvd_with_dl[:-1], self.t_start, self.t_stop, self.model_name, 'bolometric').get_values()
 
-        _constant = (4 * np.pi * mvd_with_dl[-1]**2) * (1 + self.redshift)**-1 * 1.60217657e-9
+        _constant = (4 * np.pi * mvd_with_dl[-1]**2) * (1 + self.redshift)**-1
         return _fluence * self.__duration() * _constant
 
     def isotropic_energy__mp(self, luminosity_distance, n_proc):

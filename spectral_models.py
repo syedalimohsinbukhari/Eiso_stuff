@@ -249,9 +249,3 @@ class SpectralModels:
                 self.smoothly_broken_powerlaw() if model == 'sbpl' else
                 self.sbpl_pl() if model == 'sbpl_pl' else
                 self.sbpl_bb() if model == 'sbpl_bb' else self.sbpl_pl_bb()][0]
-
-    def isotropic_energy(self):
-        _fluence = self.get_values()
-        _constant = (4 * np.pi * self.__luminosity_integral()**2) * (1 + self.z)**-1
-
-        return _fluence * self.__duration() * _constant
