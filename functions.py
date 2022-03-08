@@ -140,9 +140,11 @@ class IsotropicEnergy:
 
         return [Pool(n_proc).map(self.isotropic_energy, chunk) for chunk in _chunks]
 
-    def get_value_error_pairs(self, n_proc=2):
+    def get_value_error_pairs(self, use_multiprocessing=False, n_proc=2):
 
         luminosity_distance = self.__luminosity_integral()
+
+        n_proc = 1 if not use_multiprocessing else n_proc
 
         e_isotropic = self.isotropic_energy__mp(luminosity_distance, n_proc=n_proc)
 
