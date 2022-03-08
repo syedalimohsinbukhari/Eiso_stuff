@@ -130,8 +130,15 @@ dmypy.json
 
 # PyCharm
 .idea/
+
+# external
 /csv_files/
 /ep1/
 /ep2/
 /ep3/
 /TI/
+
+# others
+isotropic_energy.py
+isotropic_energy__sys.py
+functions.py.bak
