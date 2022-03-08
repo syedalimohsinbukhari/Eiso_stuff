@@ -1,0 +1,165 @@
+"""
+Created on Mon Feb 21 10:39:41 2022
+"""
+import copy
+from math import erf as error_function
+from multiprocessing import Pool
+
+import astropy.constants.codata2018 as constants
+import matplotlib.pyplot as plt
+import numpy as np
+import scipy.integrate as s_int
+from astropy.cosmology import FlatLambdaCDM
+from astropy.io import fits
+from numpy.random import multivariate_normal
+
+from spectral_models import band_n
+
+
+class IsotropicEnergy:
+
+    def __init__(self, model_name, redshift, integration_time, e_low=1, e_high=int(1e4), n_iterations=int(1e4), sigma=1, n_bins=500, h0=None, omega_m=None):
+        self.e_low = e_low
+        self.e_high = e_high
+
+        self.n_bins = n_bins
+        self.redshift = redshift
+        self.c = constants.c.value
+        self.model_name = model_name
+        self.n_iterations = n_iterations
+        self.h0 = h0 if h0 is not None else 67.4
+        self.integration_time = integration_time
+        self.sigma = error_function(sigma / np.sqrt(2))
+        self.omega_m = omega_m if omega_m is not None else 1 - 0.714
+
+    def __parameter_details(self):
+        if self.model_name.lower() == 'band':
+            n_par, par_n = 4, ['amplitude', 'epeak', 'alpha', 'beta']
+        else:
+            # TODO - implement for other models
+            n_par, par_n = 0, []
+
+        return n_par, par_n
+
+    def __model_parameters(self, return_parameters=False):
+        model_file = fits.open(f'{self.model_name}.fit')['FIT PARAMS']
+
+        n_par, _ = self.__parameter_details()
+
+        pars_ = [model_file.data[f'PARAM{i}'][0][0] for i in range(n_par)]
+        errs_ = [model_file.data[f'PARAM{i}'][0][1] for i in range(n_par)]
+
+        covariance_matrix_ = model_file.data['COVARMAT'][0][0:n_par, 0:n_par]
+
+        mvd_ = multivariate_normal(pars_, covariance_matrix_, self.n_iterations)
+
+        return mvd_, pars_, errs_, covariance_matrix_ if return_parameters else mvd_
+
+    def __parameter_dictionary(self):
+        mvd_ = np.array(self.__model_parameters()[0])
+
+        _, par_n = self.__parameter_details()
+
+        return {v: mvd_[:, i] for i, v in enumerate(par_n)}
+
+    def __get_median_values(self, parameter_name, dictionary=None):
+        mvd_ = self.__parameter_dictionary()[parameter_name] if dictionary is None else dictionary[parameter_name]
+
+        _median = np.median(mvd_, axis=0)[0] if dictionary is None else np.median(mvd_)
+
+        hi_mask, lo_mask = mvd_ >= _median, mvd_ < _median
+        hi, lo = np.sort(mvd_[hi_mask]), np.sort(mvd_[lo_mask])
+        _norm_hi, _norm_lo = hi[np.int64(self.sigma * np.size(hi))], lo[np.int64((1 - self.sigma) * np.size(lo))]
+
+        return _median, _norm_hi, _norm_lo
+
+    def save_multivariate_distributions(self):
+        return self.__model_parameters()
+        # np.save(f'parameters_{self.model_name}', self.__model_parameters())
+
+    def parameter_plotting(self):
+        mvd = self.__parameter_dictionary()
+        n_par, par_n = self.__parameter_details()
+
+        _f = (10, 5) if 'e_isotropic' in par_n else (20, 5)
+
+        f, ax = plt.subplots(1, n_par, figsize=_f, sharey='row')
+        for number, parameter in zip(range(n_par), par_n):
+            ax[number].hist(mvd[parameter], bins=self.n_bins, color='g')
+            _median, _norm_hi, _norm_lo = self.__get_median_values(parameter)
+            [ax[number].axvline(value, color='k', ls=line_style) for value, line_style in zip([_median, _norm_lo, _norm_hi], ['-', '-.', ':'])]
+            if parameter not in ['e_isotropic', 'amplitude']:
+                ax[number].plot([], [], label=r'%.3f$_{-%.3f}^{+%.3f}$' % (_median, _median - _norm_lo, _norm_hi - _median), color='w')
+            else:
+                ax[number].plot([], [], label=r'%.3E$_{-%.3E}^{+%.3E}$' % (_median, _median - _norm_lo, _norm_hi - _median), color='w')
+            if number == 0:
+                ax[number].set_ylabel('Counts')
+            ax[number].set_xlabel(f'{parameter.capitalize()}')
+            ax[number].legend(loc='best', frameon=False)
+            if number > 0:
+                # taken from https://www.geeksforgeeks.org/how-to-remove-ticks-from-matplotlib-plots/
+                ax[number].tick_params(left=False)
+        plt.tight_layout()
+
+    def luminosity_integral(self):
+        return FlatLambdaCDM(H0=self.h0, Om0=self.omega_m).luminosity_distance(self.redshift).si.value
+
+    def __energy(self):
+        return np.logspace(np.log10(8), np.log10(int(1e8)), self.n_bins)
+
+    @staticmethod
+    def __chunks(lst, n):
+        # taken from https://stackoverflow.com/a/312464/3212945
+        """Yield successive n-sized chunks from lst."""
+        for i in range(0, len(lst), n):
+            yield lst[i:i + n]
+
+    def isotropic_energy(self, energy, pars):
+        _fluence = band_n(energy, pars)
+        _constant = 4 * np.pi * self.luminosity_integral() * (1 + self.redshift)**-1 * 1.60217657e-9
+        return _fluence * self.integration_time * _constant
+
+    def isotropic_energy_integral(self, amp, ep, a, b):
+        return s_int.quad(self.isotropic_energy, self.e_low / (1 + self.redshift), self.e_high / (1 + self.redshift), args=([amp, ep, a, b]))
+
+    def mpl_e_isotropic(self, n_proc=2):
+        mvd = copy.deepcopy(self.__parameter_dictionary())
+        mvd = np.array(list(mvd.values())).T
+
+        _chunks = tuple(self.__chunks(mvd, self.n_iterations // n_proc))
+
+        return [Pool(n_proc).starmap(self.isotropic_energy_integral, chunk) for chunk in _chunks]
+
+    def get_value_error(self):
+        _values = np.array(self.mpl_e_isotropic())
+
+        values = np.array([i[:, 0] for i in _values]).flatten()
+        errors = np.array([i[:, 1] for i in _values]).flatten()
+
+        return values, errors
+
+    def isotropic_energy_plotting(self):
+        _dict = {}
+        val, _ = self.get_value_error()
+        mvd_peak = copy.deepcopy(self.__parameter_dictionary())
+
+        _dict['e_i_peak'] = mvd_peak['epeak'] * (1 + self.redshift)
+        _dict['e_isotropic'] = val
+
+        f, ax = plt.subplots(1, 2, figsize=(10, 5), sharey='row')
+        for number, parameter in zip(range(2), ['e_i_peak', 'e_isotropic']):
+            ax[number].hist(_dict[parameter], bins=self.n_bins, color='g')
+            _median, _norm_hi, _norm_lo = self.__get_median_values(parameter, _dict)
+            [ax[number].axvline(value, color='k', ls=line_style) for value, line_style in zip([_median, _norm_lo, _norm_hi], ['-', '-.', ':'])]
+            if parameter not in ['e_isotropic', 'amplitude']:
+                ax[number].plot([], [], label=r'%.3f$_{-%.3f}^{+%.3f}$' % (_median, _median - _norm_lo, _norm_hi - _median), color='w')
+            else:
+                ax[number].plot([], [], label=r'%.3E$_{-%.3E}^{+%.3E}$' % (_median, _median - _norm_lo, _norm_hi - _median), color='w')
+            if number == 0:
+                ax[number].set_ylabel('Counts')
+            ax[number].set_xlabel(f'{parameter.capitalize()}')
+            ax[number].legend(loc='best', frameon=False)
+            if number > 0:
+                # taken from https://www.geeksforgeeks.org/how-to-remove-ticks-from-matplotlib-plots/
+                ax[number].tick_params(left=False)
+        plt.tight_layout()
