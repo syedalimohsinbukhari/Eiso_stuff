@@ -6,20 +6,46 @@ import numpy as np
 import scipy.integrate as si
 from astropy.cosmology import FlatLambdaCDM
 
+"""
+RMFIT order of models
+
+PL:         PL
+PL_BB:      PL + BB
+SBPL:       SBPL
+SBPL_PL:    PL + SBPL
+SBPL_BB:    SBPL + BB
+SBPL_PL_BB: PL + SBPL + BB
+CPL:        CPL
+CPL_PL:     PL + CPL
+CPL_BB:     CPL + BB
+CPL_PL_BB:  PL + CPL + BB
+BAND:       BAND
+BAND_PL:    PL + BAND
+BAND_BB:    BAND + BB
+BAND_PL_BB: PL + BAND + BB
+
+"""
+
 
 class SpectralModels:
 
-    def __init__(self, energy, pars, t_start, t_stop, model: str = 'pl', model_type: str = 'counts', flux_energy=None, isotropic_energy=None, redshift=None, h0=67.4,
-                 omega_m=0.315):
+    def __init__(self, energy, pars, t_start, t_stop, model: str = 'pl', model_type: str = 'counts', flux_energy=None,
+                 isotropic_energy=None, redshift=None, h0=67.4, omega_m=0.315):
+
         self.energy = energy
         self.pars = pars
+
         self.t_start = t_start
         self.t_stop = t_stop
+
         self.model = model
         self.model_type = model_type
+
         self.f_ene = [10, int(1e7)] if flux_energy is None else flux_energy
         self.f_iso = [1, int(1e4)] if isotropic_energy is None else isotropic_energy
+
         self.z = 0 if redshift is None else redshift
+
         self.h0 = h0
         self.omega_m = omega_m
         self.keVtoErg = 1.6021766208e-09
@@ -31,9 +57,6 @@ class SpectralModels:
 
     def __luminosity_integral(self):
         return si.quad(self.__luminosity_distance, 0, self.z)[0]
-
-    def __duration(self):
-        return self.t_stop - self.t_start
 
     def __raise_error(self):
         types_ = ['counts', 'energy', 'integrate', 'bolometric']
@@ -52,13 +75,10 @@ class SpectralModels:
         pars = pars if joint_pars is None else joint_pars
 
         def f_pl(_e=energy, out_ene=True):
-            [amp, ind, e_piv] = pars
+            [amp, e_piv, ind] = pars
             out = amp * (_e * e_piv**-1)**ind
 
             return _e * out if out_ene else out
-
-        # def ene_pl():
-        #     return energy * f_pl()
 
         def int_pl(_range=f_ene):
             return si.quad(f_pl, _range[0], _range[1])[0] * kev_
@@ -67,7 +87,8 @@ class SpectralModels:
             _bol_range = [i / (1 + z) for i in f_iso]
             return int_pl(_range=_bol_range) * self.__time_difference()
 
-        return f_pl(out_ene=False) if mt == 'counts' else f_pl() if mt == 'energy' else int_pl() if mt == 'integrate' else bol_pl()
+        return f_pl(out_ene=False) if mt == 'counts' else f_pl() if mt == 'energy' else int_pl() if mt == 'integrate' \
+            else bol_pl()
 
     def blackbody(self, joint_pars=None):
         energy, pars, mt, f_ene, f_iso, z, kev_ = self.__vals()
@@ -79,9 +100,6 @@ class SpectralModels:
             out = amp * _e**2 * (np.exp(_e / kt) - 1)**-1
             return _e * out if out_ene else out
 
-        # def ene_bb():
-        #     return energy * f_bb()
-
         def int_bb(_range=f_ene):
             return si.quad(f_bb, _range[0], _range[1])[0] * kev_
 
@@ -89,7 +107,8 @@ class SpectralModels:
             _bol_range = [i / (1 + z) for i in f_iso]
             return int_bb(_bol_range) * self.__time_difference()
 
-        return f_bb(out_ene=False) if mt == 'counts' else f_bb() if mt == 'energy' else int_bb() if mt == 'integrate' else bol_bb()
+        return f_bb(out_ene=False) if mt == 'counts' else f_bb() if mt == 'energy' else int_bb() if mt == 'integrate' \
+            else bol_bb()
 
     def cutoff_powerlaw(self, joint_pars=None):
         energy, pars, mt, f_ene, f_iso, z, kev_ = self.__vals()
@@ -102,9 +121,6 @@ class SpectralModels:
 
             return _e * out if out_ene else out
 
-        # def ene_cpl():
-        #     return energy * f_cpl()
-
         def int_cpl(_range=f_ene):
             return si.quad(f_cpl, _range[0], _range[1])[0] * kev_
 
@@ -112,7 +128,8 @@ class SpectralModels:
             _bol_range = [i / (1 + z) for i in f_iso]
             return int_cpl(_bol_range) * self.__time_difference()
 
-        return f_cpl(out_ene=False) if mt == 'counts' else f_cpl() if mt == 'energy' else int_cpl() if mt == 'integrate' else bol_cpl()
+        return f_cpl(out_ene=False) if mt == 'counts' else f_cpl() if mt == 'energy' else int_cpl() if \
+            mt == 'integrate' else bol_cpl()
 
     def smoothly_broken_powerlaw(self, joint_pars=None):
         energy, pars, mt, f_ene, f_iso, z, kev_ = self.__vals()
@@ -139,9 +156,6 @@ class SpectralModels:
 
             return _e * out if out_ene else out
 
-        # def ene_sbpl(_ene):
-        #     return _ene * f_sbpl()
-
         def int_sbpl(_range=f_ene):
             return si.quad(f_sbpl, _range[0], _range[1])[0] * kev_
 
@@ -149,7 +163,8 @@ class SpectralModels:
             _bol_range = [i / (1 + z) for i in f_iso]
             return int_sbpl(_bol_range) * self.__time_difference()
 
-        return f_sbpl(out_ene=False) if mt == 'counts' else f_sbpl() if mt == 'energy' else int_sbpl() if mt == 'integrate' else bol_sbpl()
+        return f_sbpl(out_ene=False) if mt == 'counts' else f_sbpl() if mt == 'energy' else int_sbpl() if \
+            mt == 'integrate' else bol_sbpl()
 
     def band_grb_function(self, joint_pars=None):
         energy, pars, mt, f_ene, f_iso, z, kev_ = self.__vals()
@@ -160,13 +175,10 @@ class SpectralModels:
             [amp, e_peak, i1, i2] = pars
             cond = (i1 - i2) * (2 + i1)**-1 * e_peak
 
-            out = [amp * (_e * 0.01)**i2 * np.exp(i2 - i1) * ((i1 - i2) * e_peak * 0.01 * (i1 + 2)**-1)**(i1 - i2) if _e > cond else
-                   amp * (_e * 0.01)**i1 * np.exp(-(2 + i1) * _e * e_peak**-1)][0]
+            out = [amp * (_en * 0.01)**i2 * np.exp(i2 - i1) * ((i1 - i2) * e_peak * 0.01 * (i1 + 2)**-1)**(i1 - i2) if
+                   _en > cond else amp * (_en * 0.01)**i1 * np.exp(-(2 + i1) * _en * e_peak**-1) for _en in _e]
 
             return _e * out if out_ene else out
-
-        # def ene_band():
-        #     return energy * f_band()
 
         def int_band(_range=f_ene):
             return si.quad(f_band, _range[0], _range[1])[0] * kev_
@@ -175,60 +187,65 @@ class SpectralModels:
             _bol_range = [i / (1 + z) for i in f_iso]
             return int_band(_bol_range) * self.__time_difference()
 
-        return f_band(out_ene=False) if mt == 'counts' else f_band() if mt == 'energy' else int_band() if mt == 'integrate' else bol_band()
+        return f_band(out_ene=False) if mt == 'counts' else f_band() if mt == 'energy' else int_band() if \
+            mt == 'integrate' else bol_band()
 
-    def pl_bb(self, joint_pars=None):
-        pars = self.pars if joint_pars is None else joint_pars
-
-        pl_, bb_ = self.powerlaw(pars[0:4]), self.blackbody(pars[4:])
+    def pl_bb(self):
+        pl_ = self.powerlaw(self.pars[:3])
+        bb_ = self.blackbody(self.pars[3:])
 
         return pl_, bb_, pl_ + bb_
 
     def cpl_pl(self):
-        cpl_, pl_ = self.cutoff_powerlaw(self.pars[0:5]), self.powerlaw(self.pars[5:])
+        pl_, cpl_ = self.powerlaw(self.pars[:3]), self.cutoff_powerlaw(self.pars[3:])
 
         return cpl_, pl_, cpl_ + pl_
 
     def cpl_bb(self):
-        cpl_, bb_ = self.cutoff_powerlaw(self.pars[0:5]), self.blackbody(self.pars[5:])
+        cpl_, bb_ = self.cutoff_powerlaw(self.pars[:-2]), self.blackbody(self.pars[-2:])
 
         return cpl_, bb_, cpl_ + bb_
 
     def cpl_pl_bb(self):
-        cpl_ = self.energy(self.pars[0:5])
-        pl_, bb_, _ = self.pl_bb(self.pars[5:])
+        pl_ = self.powerlaw(self.pars[:3])
+        cpl_ = self.cutoff_powerlaw(self.pars[3:-2])
+        bb_ = self.blackbody(self.pars[-2:])
 
         return cpl_, pl_, bb_, cpl_ + pl_ + bb_
 
     def band_pl(self):
-        band_, pl_ = self.band_grb_function(self.pars[0:5]), self.powerlaw(self.pars[5:])
+        pl_, band_ = self.powerlaw(self.pars[:3]), self.band_grb_function(self.pars[3:])
 
         return band_, pl_, band_ + pl_
 
     def band_bb(self):
-        band_, bb_ = self.band_grb_function(self.pars[0:5]), self.blackbody(self.pars[5:])
+        band_, bb_ = self.band_grb_function(self.pars[:-2]), self.blackbody(self.pars[-2:])
 
         return band_, bb_, band_ + bb_
 
     def band_pl_bb(self):
-        band_ = self.band_grb_function(self.pars[0:5])
-        pl_, bb_, _ = self.pl_bb(self.pars[5:])
+        pl_ = self.powerlaw(self.pars[:3])
+        band_ = self.band_grb_function(self.pars[3:-2])
+        bb_ = self.blackbody(self.pars[-2:])
 
         return band_, pl_, bb_, band_ + pl_ + bb_
 
     def sbpl_pl(self):
-        sbpl_, pl_ = self.smoothly_broken_powerlaw(self.pars[0:7]), self.powerlaw(self.pars[7:])
+        pl_ = self.powerlaw(self.pars[:3])
+        sbpl_ = self.smoothly_broken_powerlaw(self.pars[3:])
 
-        return sbpl_, pl_, sbpl_ + pl_
+        return pl_, sbpl_, sbpl_ + pl_
 
     def sbpl_bb(self):
-        sbpl_, bb_ = self.smoothly_broken_powerlaw(self.pars[0:7]), self.blackbody(self.pars[7:])
+        sbpl_ = self.smoothly_broken_powerlaw(self.pars[:-2])
+        bb_ = self.blackbody(self.pars[-2:])
 
         return sbpl_, bb_, sbpl_ + bb_
 
     def sbpl_pl_bb(self):
-        sbpl_ = self.smoothly_broken_powerlaw(self.pars[0:7])
-        pl_, bb_, _ = self.pl_bb(self.pars[7:])
+        pl_ = self.powerlaw(self.pars[:3])
+        sbpl_ = self.smoothly_broken_powerlaw(self.pars[3:-2])
+        bb_ = self.blackbody(self.pars[-2:])
 
         return sbpl_, pl_, bb_, sbpl_ + pl_ + bb_
 
