@@ -142,3 +142,7 @@ dmypy.json
 isotropic_energy.py
 isotropic_energy__sys.py
 functions.py.bak
+old/*
+test/*
+e_isotropic__new/*
+*.fit
